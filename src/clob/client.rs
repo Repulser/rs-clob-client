@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
-#[cfg(feature = "heartbeats")]
 use std::time::Duration;
 
 use alloy::dyn_abi::Eip712Domain;
@@ -371,6 +370,16 @@ pub struct Config {
     /// headers. This adds another round trip to the requests.
     #[builder(default)]
     use_server_time: bool,
+    /// Reqwest connect timeout used by the underlying HTTP client.
+    ///
+    /// Without this, network/DNS/TLS stalls can hang indefinitely and starve Tokio runtimes.
+    #[builder(default = Duration::from_secs(3))]
+    connect_timeout: Duration,
+    /// Overall per-request timeout used by the underlying HTTP client.
+    ///
+    /// This is a last-resort safety net in addition to any higher-level timeboxing.
+    #[builder(default = Duration::from_secs(8))]
+    request_timeout: Duration,
     /// Override for the geoblock API host. Defaults to `https://polymarket.com`.
     /// This is primarily useful for testing.
     #[builder(into)]
@@ -1190,7 +1199,11 @@ impl Client<Unauthenticated> {
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
         headers.insert("Content-Type", HeaderValue::from_static("application/json"));
 
-        let client = ReqwestClient::builder().default_headers(headers).build()?;
+        let client = ReqwestClient::builder()
+            .default_headers(headers)
+            .connect_timeout(config.connect_timeout)
+            .timeout(config.request_timeout)
+            .build()?;
 
         let geoblock_host = Url::parse(
             config
