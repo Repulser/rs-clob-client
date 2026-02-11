@@ -239,12 +239,19 @@ where
         let (pong_tx, pong_rx) = watch::channel(Instant::now());
         let (ping_tx, mut ping_rx) = mpsc::unbounded_channel();
 
-        let heartbeat_handle = tokio::spawn(async move {
+        let mut heartbeat_handle = tokio::spawn(async move {
             Self::heartbeat_loop(ping_tx, state_rx, &config, pong_rx).await;
         });
 
         loop {
             tokio::select! {
+                // Heartbeat loop exited (timeout/closed): force reconnect by ending this connection.
+                _ = &mut heartbeat_handle => {
+                    #[cfg(feature = "tracing")]
+                    tracing::debug!("Heartbeat loop ended, reconnecting WebSocket");
+                    break;
+                }
+
                 // Handle incoming messages
                 Some(msg) = read.next() => {
                     match msg {
