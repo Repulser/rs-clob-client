@@ -364,7 +364,7 @@ impl Default for Client<Unauthenticated> {
 }
 
 /// Configuration for [`Client`]
-#[derive(Clone, Debug, Default, Builder)]
+#[derive(Clone, Debug, Builder)]
 pub struct Config {
     /// Whether the [`Client`] will use the server time provided by Polymarket when creating auth
     /// headers. This adds another round trip to the requests.
@@ -388,6 +388,19 @@ pub struct Config {
     #[builder(default = Duration::from_secs(5))]
     /// How often the [`Client`] will automatically submit heartbeats. The default is five (5) seconds.
     heartbeat_interval: Duration,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            use_server_time: false,
+            connect_timeout: Duration::from_secs(3),
+            request_timeout: Duration::from_secs(8),
+            geoblock_host: None,
+            #[cfg(feature = "heartbeats")]
+            heartbeat_interval: Duration::from_secs(5),
+        }
+    }
 }
 
 /// The default geoblock API host (separate from CLOB host)
