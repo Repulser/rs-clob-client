@@ -363,6 +363,12 @@ pub struct Config {
     /// headers. This adds another round trip to the requests.
     #[builder(default)]
     use_server_time: bool,
+    /// Force the underlying HTTP client to use HTTP/2 only.
+    ///
+    /// This should only be enabled when the target endpoint and any intermediary proxies support
+    /// HTTP/2. If they do not, requests will fail instead of falling back to HTTP/1.1.
+    #[builder(default)]
+    force_http2: bool,
     /// Reqwest connect timeout used by the underlying HTTP client.
     ///
     /// Without this, network/DNS/TLS stalls can hang indefinitely and starve Tokio runtimes.
@@ -387,6 +393,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             use_server_time: false,
+            force_http2: false,
             connect_timeout: Duration::from_secs(3),
             request_timeout: Duration::from_secs(8),
             geoblock_host: None,
@@ -1205,11 +1212,16 @@ impl Client<Unauthenticated> {
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
         headers.insert("Content-Type", HeaderValue::from_static("application/json"));
 
-        let client = ReqwestClient::builder()
+        let mut client_builder = ReqwestClient::builder()
             .default_headers(headers)
             .connect_timeout(config.connect_timeout)
-            .timeout(config.request_timeout)
-            .build()?;
+            .timeout(config.request_timeout);
+
+        if config.force_http2 {
+            client_builder = client_builder.http2_prior_knowledge();
+        }
+
+        let client = client_builder.build()?;
 
         let geoblock_host = Url::parse(
             config
