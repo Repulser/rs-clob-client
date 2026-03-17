@@ -379,6 +379,22 @@ pub struct Config {
     /// This is a last-resort safety net in addition to any higher-level timeboxing.
     #[builder(default = Duration::from_secs(8))]
     request_timeout: Duration,
+    /// How long idle pooled connections are retained by the underlying HTTP client.
+    #[builder(default = Duration::from_secs(300))]
+    pool_idle_timeout: Duration,
+    /// How often HTTP/2 keepalive pings are sent when the transport is active.
+    ///
+    /// This is ignored unless the underlying transport is HTTP/2.
+    #[builder(default = Duration::from_secs(15))]
+    http2_keep_alive_interval: Duration,
+    /// How long to wait for an HTTP/2 keepalive ACK before considering the connection unhealthy.
+    ///
+    /// This is ignored unless HTTP/2 keepalive is enabled.
+    #[builder(default = Duration::from_secs(5))]
+    http2_keep_alive_timeout: Duration,
+    /// Whether HTTP/2 keepalive pings should continue while the connection is otherwise idle.
+    #[builder(default = true)]
+    http2_keep_alive_while_idle: bool,
     /// Override for the geoblock API host. Defaults to `https://polymarket.com`.
     /// This is primarily useful for testing.
     #[builder(into)]
@@ -396,6 +412,10 @@ impl Default for Config {
             force_http2: false,
             connect_timeout: Duration::from_secs(3),
             request_timeout: Duration::from_secs(8),
+            pool_idle_timeout: Duration::from_secs(300),
+            http2_keep_alive_interval: Duration::from_secs(15),
+            http2_keep_alive_timeout: Duration::from_secs(5),
+            http2_keep_alive_while_idle: true,
             geoblock_host: None,
             #[cfg(feature = "heartbeats")]
             heartbeat_interval: Duration::from_secs(5),
@@ -1215,10 +1235,17 @@ impl Client<Unauthenticated> {
         let mut client_builder = ReqwestClient::builder()
             .default_headers(headers)
             .connect_timeout(config.connect_timeout)
-            .timeout(config.request_timeout);
+            .timeout(config.request_timeout)
+            .pool_idle_timeout(config.pool_idle_timeout)
+            .http2_keep_alive_interval(config.http2_keep_alive_interval)
+            .http2_keep_alive_timeout(config.http2_keep_alive_timeout);
 
         if config.force_http2 {
             client_builder = client_builder.http2_prior_knowledge();
+        }
+
+        if config.http2_keep_alive_while_idle {
+            client_builder = client_builder.http2_keep_alive_while_idle(true);
         }
 
         let client = client_builder.build()?;
